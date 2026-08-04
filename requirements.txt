@@ -1,0 +1,6 @@
+streamlit
+pandas 
+numpy
+pathlib
+re
+plotly
