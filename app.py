@@ -121,6 +121,8 @@ def load_matches(teams_data, players_data):
     matches = matches[['match_id', 'city', 'match_date', 'season', 'venue', 'toss_winner', 'team1', 'team2', 'toss_decision', 'match_winner', 'win_by_runs', 'win_by_wickets', 'result', 'player_of_match', 'bat_first_won', 'toss_winner_won']]
     matches = pd.concat([matches, matches_2026])
     matches = matches.reset_index(drop=True)
+    mask = (matches['match_date'].dt.year >= 2008) & (matches['match_date'].dt.year <= 2012)
+    matches.loc[mask] = matches[mask].replace(to_replace='Sunrisers Hyderabad', value='Deccan Chargers')
     return matches 
 
 @st.cache_data
@@ -356,7 +358,9 @@ def render_overview():
     fig = px.imshow(pivot, text_auto=True, color_continuous_scale="YlOrRd", aspect="auto",
                      labels={'x':"Ball in Over", 'y':"Over", 'color':"Avg Runs"})
     st.plotly_chart(fig, use_container_width=True)
-
+    ipl_winners = finals['match_winner'].value_counts().sort_values(ascending=True).reset_index()
+    st.subheader("Ipl Winners ")
+    st.plotly_chart(px.bar(ipl_winners, x="count", y="match_winner", orientation='h'))
 
 # MATCH PROFILE PAGE
 def render_innings(inn: pd.DataFrame, innings_num, batting_team, bowling_team):
@@ -609,7 +613,61 @@ def render_team_profile():
         display[["season", "match_date", "team1", "team2", "match_winner", "venue", "city", "player_of_match", "margin"]].sort_values("match_date", ascending=False).reset_index(drop=True),
         use_container_width=True,
     )
-    st.warning(f"players info about {team} -- pending/scope/objective")
+    st.divider()
+    st.subheader(f"{team}'s Players")
+    
+    team_data_batting = bbb[(bbb['season'] > 2025) & (bbb['team_batting'] == team)]
+    team_data_bowling = bbb[(bbb['season'] > 2025) & (bbb['team_bowling'] == team)]
+    all_players1 = team_data_batting['batter'].value_counts().reset_index()
+    all_players2 = team_data_bowling['bowler'].value_counts().reset_index()
+
+    all_players = all_players1.merge(all_players2, left_on='batter', right_on='bowler', how='outer')
+    all_players['player'] = np.where(all_players['batter'].isna(), all_players['bowler'], all_players['batter'])
+    all_players['count'] = all_players['count_x'].fillna(0) + all_players['count_y'].fillna(0)
+    all_players = all_players.drop(columns=['count_x', 'count_y', 'batter', 'bowler'])
+    all_players = all_players.sort_values('count', ascending=False)
+    all_players = all_players.merge(pm[['player', 'estimated_role']], on='player', how='inner').drop_duplicates(subset=['player', 'count'])
+    all_players = all_players.sort_values(by=['estimated_role', 'count'], ascending=False).reset_index(drop=True)
+    batting_players = all_players[all_players['estimated_role'] == "Batsman"]
+    bowling_players = all_players[all_players['estimated_role'] == "Bowler"]
+    all_rounder_players = all_players[all_players['estimated_role'] == "All Rounder"]
+    bowling_players = bowling_players.merge(pm[['player', 'bowl_style', 'player_full_name']], on='player', how='left').drop_duplicates(subset=['player', 'count'])
+    batting_players = batting_players.merge(pm[['player', 'bat_style', 'player_full_name']], on='player', how='left').drop_duplicates(subset=['player', 'count'])
+    all_rounder_players = all_rounder_players.merge(pm[['player', 'bat_style', 'bowl_style', 'player_full_name']], on='player', how='left').drop_duplicates(subset=['player', 'count'])
+    batting_players = batting_players.iloc[:7, :]
+    bowling_players = bowling_players.iloc[:7, :]
+    all_rounder_players = all_rounder_players.iloc[:5, :]
+    
+    if batting_players.shape[0] > 0:
+        st.subheader("Current leading batsman")
+        for col, i in zip(st.columns(batting_players.shape[0]), range(batting_players.shape[0])):
+            with col:
+                st.image(
+                    DATA_ROOT / "images" / "batsman_image_icon.webp",
+                    caption=f"{batting_players.iloc[i, :]['player']} \n\n {batting_players.iloc[i, :]['bat_style']}",
+                    width=150
+                )
+                
+    if all_rounder_players.shape[0] > 0:
+        st.subheader("Current leading All Rounders")
+        for col, i in zip(st.columns(all_rounder_players.shape[0]), range(all_rounder_players.shape[0])):
+            with col:
+                st.image(
+                    DATA_ROOT / "images" / "all_rounder_image_icon.jpg",
+                    caption=f"{all_rounder_players.iloc[i, :]['player']} \n\n {all_rounder_players.iloc[i, :]['bat_style']} \n\n {all_rounder_players.iloc[i, :]['bowl_style']}",
+                    width=150
+                )    
+                
+    if bowling_players.shape[0] > 0:
+        st.subheader("Current leading bowler")
+        for col, i in zip(st.columns(bowling_players.shape[0]), range(bowling_players.shape[0])):
+            with col:
+                st.image(
+                    DATA_ROOT / "images" / "bowling_image_icon.jpg",
+                    caption=f"{bowling_players.iloc[i, :]['player']} \n\n {bowling_players.iloc[i, :]['bowl_style']}",
+                    width=150
+                )
+    
 
 # PLAYER PROFILE
 def player_summary(player):
@@ -656,7 +714,7 @@ def render_player_profile():
                                     title=f"{player} — Batting Run Distribution "),
                              use_container_width=True)
 
-    if role == 'Bowler':
+    elif role == 'Bowler':
         st.subheader("Bowling — Match by Match")
         bowl_data = p_data[p_data["bowl_balls"] > 0]
         st.plotly_chart(
@@ -677,8 +735,56 @@ def render_player_profile():
             st.plotly_chart(px.pie(values=category.value_counts().values,names=category.value_counts().index,
             title=f"{player} — Bowling Run Distribution "),use_container_width=True)
     
-    # if role == "All Rounder":
+    elif role == "All Rounder":
+        # batting performance
+        st.subheader("Batting — Match by Match")
+        bat_data = p_data[p_data['bat_balls'] > 0]
+        st.plotly_chart(
+            px.bar(bat_data, x="match_date", y="bat_runs", hover_data=["opponent", "bat_strike_rate"],
+                    labels={"match_date": "Match Date", "bat_runs": "Runs"}),
+            use_container_width=True,
+        )
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Highest runs", int(bat_data["bat_runs"].max()))
+        c2.metric("Avg runs", round(bat_data["bat_runs"].mean(), 1))
+        avg_sr = bat_data["bat_strike_rate"].mean()
+        c3.metric("Avg Strike Rate", round(avg_sr, 1) if pd.notna(avg_sr) else "N/A")
+        c4.metric("50s", int(p_data["half_century"].sum()))
+        c5.metric("100s", int(p_data["century"].sum()))
         
+        # bowling performance
+        st.subheader("Bowling — Match by Match")
+        bowl_data = p_data[p_data["bowl_balls"] > 0]
+        st.plotly_chart(
+            px.bar(
+                bowl_data, x="match_date", y="bowl_wickets", hover_data=["opponent", "bowl_economy"], labels={"match_date": "Match Date", "bowl_wickets": "Wickets"}
+            ),
+            use_container_width=True,
+        )
+        c1, c2 = st.columns(2)
+        c1.metric("Best Bowling", int(bowl_data["bowl_wickets"].max()) if len(bowl_data) else "N/A")
+        c2.metric("Avg Economy", round(bowl_data["bowl_economy"].mean(), 2) if len(bowl_data) else "N/A")
+        
+        # ball-outcome pie from ball-by-ball, if this player appears as batter there
+        c1, c2 = st.columns(2)
+        with c1:
+            batter_balls = bbb[bbb["batter"] == player]
+            if len(batter_balls):
+                category = batter_balls["batter_runs"].apply(
+                    lambda r: "Dot" if r == 0 else ("Four" if r == 4 else("Six" if r == 6 else f"{int(r)} run"))
+                )
+                st.plotly_chart(px.pie(values=category.value_counts().values, names=category.value_counts().    index, title=f"{player} — Batting RuDistribution "),
+                use_container_width=True)
+        
+        # ball-outcome pie from ball-by-ball, if this player appears as a batter there
+        with c2:
+            bowler_balls = bbb[bbb["bowler"] == player]
+            if len(bowler_balls):
+                category = bowler_balls["total_runs"].apply(
+                    lambda r: "Dot" if r == 0 else ("Four" if r == 4 else ("Six" if r == 6 else f"{int(r)} run"))
+                )
+                st.plotly_chart(px.pie(values=category.value_counts().values,names=category.value_counts().index, title=f"{player} — Bowling Run Distribution "),use_container_width=True)
+            
 
     st.subheader("Performance vs Each Opponent")
     vs_team = p_data.groupby("opponent").agg(
@@ -739,6 +845,15 @@ def render_player_profile():
     players_data.index.name='Parameters'
     st.dataframe(players_data, use_container_width=True)
 
+    allPlayersOverall = pm.groupby(['player', 'estimated_role']).agg(
+        strike_rate=("bat_strike_rate", "mean"),
+        avg_runs=("bat_runs", "mean"),
+        experience=('match_id', 'count'),
+        player_name=('player_full_name', 'first')
+    ).reset_index()
+    allPlayersOverall = allPlayersOverall[allPlayersOverall['experience'] > 5]
+    st.plotly_chart(px.scatter(allPlayersOverall, x="strike_rate", y="avg_runs", hover_name="player_name", color="estimated_role", size="experience"), use_container_width=True)
+    st.info('players having played matches less than 5 were excluded')
 
 # PHASE PROFILE 
 def render_phase_analysis():
