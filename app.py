@@ -11,7 +11,7 @@ DATA_ROOT = BASE_DIR / "data"
 DATA_DIR = DATA_ROOT / "ipl_dataset_2008-2026"
 
 st.title('IPL 2008-2026 Analysis Dashboard ')
-st.caption('Data displayed here is solely based on third party datasets publically available on Kaggle and used for educational and learning purpose only. please refer to the official sites for accrate and reliable information')
+st.caption('Data displayed here is solely based on third party datasets publically available on Kaggle and used for educational and learning purpose only. please refer to the official sites for accurate and reliable information')
 
 def fill_toss_decision(x):
     if pd.isna(x['toss_decision']):
@@ -359,8 +359,8 @@ def render_overview():
                      labels={'x':"Ball in Over", 'y':"Over", 'color':"Avg Runs"})
     st.plotly_chart(fig, use_container_width=True)
     ipl_winners = finals['match_winner'].value_counts().sort_values(ascending=True).reset_index()
-    st.subheader("Ipl Winners ")
-    st.plotly_chart(px.bar(ipl_winners, x="count", y="match_winner", orientation='h'))
+    st.subheader("IPL Winners ")
+    st.plotly_chart(px.bar(ipl_winners, x="count", y="match_winner", orientation='h', labels={'match_winner':'Winner', 'count':'Count'}))
 
 # MATCH PROFILE PAGE
 def render_innings(inn: pd.DataFrame, innings_num, batting_team, bowling_team):
@@ -403,7 +403,7 @@ def render_innings(inn: pd.DataFrame, innings_num, batting_team, bowling_team):
             x=[str(v) for v in wicket_balls["ball_number"]],
             y=[str(v) for v in wicket_balls["over_number"]],
             mode="markers", marker=dict(symbol="x", size=10, color="black", line=dict(width=1)),
-            name="Wicket",
+            name="Wicket", 
         ))
     fig.update_layout(title="Runs per Ball", xaxis_title="Ball in Over", yaxis_title="Over", height=650)
     st.plotly_chart(fig, use_container_width=True)
@@ -917,14 +917,14 @@ def render_phase_analysis():
     with c1:
         tb_phase = team_bat.groupby("phase").agg(balls=("innings_legal_balls", "count"), runs=("total_runs", "sum"))
         tb_phase["run_rate"] = (tb_phase["runs"] / (tb_phase["balls"] / 6)).round(2)
-        tb_phase = tb_phase.reindex([p for p in ["Powerplay", "Middle", "Death"] if p in tb_phase.index])
+        tb_phase = tb_phase.reindex([p for p in ["PowerPlay", "Middle", "Death"] if p in tb_phase.index])
         st.plotly_chart(px.bar(x=tb_phase.index, y=tb_phase["run_rate"], title=f"{team} — Batting Run Rate by Phase",
                                 labels={"x": "Phase", "y": "Run Rate"}),
                          use_container_width=True)
     with c2:
         tw_phase = team_bowl.groupby("phase").agg(balls=("innings_legal_balls", "count"), runs_conceded=("total_runs", "sum"))
         tw_phase["economy"] = (tw_phase["runs_conceded"] / (tw_phase["balls"] / 6)).round(2)
-        tw_phase = tw_phase.reindex([p for p in ["Powerplay", "Middle", "Death"] if p in tw_phase.index])
+        tw_phase = tw_phase.reindex([p for p in ["PowerPlay", "Middle", "Death"] if p in tw_phase.index])
         st.plotly_chart(px.bar(x=tw_phase.index, y=tw_phase["economy"], title=f"{team} — Bowling Economy by Phase",
                                 labels={"x": "Phase", "y": "Economy"}),
                          use_container_width=True)
@@ -934,11 +934,21 @@ def render_phase_analysis():
 def render_fantasy_points():
 
     n = st.slider("Show top N players", 5, 30, 10)
-    top_fantasy = pm.groupby("player")["fantasy_points"].sum().sort_values(ascending=False).head(n)
-    st.plotly_chart(px.bar(x=top_fantasy.index, y=top_fantasy.values,
+    st.subheader("Select Season ")
+    seasons = set(pm['season'].unique()) | set(("all",))
+    ssn = st.selectbox('See top players of any season', seasons)
+    if ssn == "all":
+        top_fantasy = pm.groupby("player")["fantasy_points"].sum().sort_values(ascending=False).head(n)
+        st.plotly_chart(px.bar(x=top_fantasy.index, y=top_fantasy.values,
                             labels={"x": "Player", "y": "Fantasy Points"}),
                      use_container_width=True)
-
+    else :
+        pm_season = pm[pm['season'] == ssn]
+        top_fantasy = pm_season.groupby("player")["fantasy_points"].sum().sort_values(ascending=False).head(n)
+        
+        st.plotly_chart(px.bar(x=top_fantasy.index, y=top_fantasy.values,
+                                    labels={"x": "Player", "y": "Fantasy Points"}),
+                             use_container_width=True)
     st.subheader(" Top Intense / Closest Matches")
     c1, c2 = st.columns(2)
     with c1:
@@ -952,7 +962,7 @@ def render_fantasy_points():
         st.dataframe(close_wkts[["season", "match_date", "team1", "team2", "match_winner", "win_by_wickets"]],
                      use_container_width=True)
 
-    st.subheader(" Top Bowlers (2026)")
+    st.subheader(" Top Bowlers")
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("**Most Wickets**")
@@ -961,7 +971,7 @@ def render_fantasy_points():
                                 labels={"x": "Player", "y": "Wickets"}),
                          use_container_width=True)
     with c2:
-        st.markdown("**Best Economy (min 10 overs bowled)**")
+        st.markdown("**Best Economy**")
         bowl_totals = pm.groupby("player").agg(balls=("bowl_balls", "sum"), runs=("bowl_runs_conceded", "sum"))
         bowl_totals = bowl_totals[bowl_totals["balls"] >= 60]
         bowl_totals["economy"] = (bowl_totals["runs"] / (bowl_totals["balls"] / 6)).round(2)
@@ -980,7 +990,7 @@ def render_fantasy_points():
         use_container_width=True,
     )
 
-    st.subheader("All-Rounder / Dual-Threat Picks")
+    st.subheader("All-Rounder - Dual-Threat Picks")
     vp = pm.groupby("player").agg(
         matches=("match_id", "nunique"), avg_bat_runs=("bat_runs", "mean"), avg_wickets=("bowl_wickets", "mean"),
         avg_fantasy_points=("fantasy_points", "mean"),
