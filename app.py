@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd 
 import plotly.express as px 
 import plotly.graph_objects as go 
-import streamlit as st 
+import streamlit as st  
 from pathlib import Path
 st.set_page_config(page_title="IPL Dashboard", layout="wide")
 
@@ -995,12 +995,13 @@ def render_fantasy_points():
         matches=("match_id", "nunique"), avg_bat_runs=("bat_runs", "mean"), avg_wickets=("bowl_wickets", "mean"),
         avg_fantasy_points=("fantasy_points", "mean"),
     )
-    vp = vp[vp["matches"] >= 3]
-    vp["dual_threat"] = (vp["avg_bat_runs"] >= 15) & (vp["avg_wickets"] >= 0.5)
+    vp = vp[vp["matches"] >= 5]
+    vp["dual_threat"] = (vp["avg_bat_runs"] >= 18) & (vp["avg_wickets"] >= 0.8)
     st.dataframe(vp[vp["dual_threat"]].sort_values("avg_fantasy_points", ascending=False), use_container_width=True)
 
     st.subheader("Search a Player")
     search = st.text_input("Player name")
+    search = str(search).strip()
     if search:
         result = pm[pm["player"].str.contains(search, case=False, na=False)]
         st.dataframe(result, use_container_width=True)
